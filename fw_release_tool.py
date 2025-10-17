@@ -13,7 +13,7 @@ import logging
 
 # ============================ Tool version ============================
 TOOL_NAME = "fw_release_tool"
-TOOL_VERSION = "1.0.1"  # <— aggiorna qui quando cambi lo script
+TOOL_VERSION = "1.0.2"  # <— aggiorna qui quando cambi lo script
 
 
 # ============================ Logging Setup ============================
@@ -80,19 +80,30 @@ def srec_s0(text: str, addr: int = 0x0000) -> str:
 
 def inject_single_s0(srec_path: Path, s0_line: str, log: logging.Logger) -> tuple[bool, int]:
     """
-    Ensure exactly one S0 record exists in the SREC file.
-    Removes all existing S0 lines and inserts a single new one
-    before the termination record (S7/S8/S9).
+    Ensure exactly one custom S0 record exists in the SREC file.
+    Keeps the original header S0 (if present at the top) and removes any additional S0 records.
+    Inserts one new S0 record (our version tag) before the termination record (S7/S8/S9).
 
     Returns: (inserted: bool, removed_count: int)
     """
     text = srec_path.read_text(encoding="utf-8", errors="ignore")
     lines = text.splitlines(True)
 
-    # Remove all existing S0 lines
+    if not lines:
+        raise RuntimeError("SREC file is empty.")
+
     removed = 0
     new_lines = []
-    for line in lines:
+
+    # Preserve the first S0 (format header) if it's the very first line.
+    preserve_first_s0 = lines[0].startswith("S0")
+    if preserve_first_s0:
+        new_lines.append(lines[0])
+        log.info("Preserving original S0 header at line 0.")
+
+    # Remove other S0 records (only beyond the first line if already preserved)
+    start_idx = 1 if preserve_first_s0 else 0
+    for line in lines[start_idx:]:
         if line.startswith("S0"):
             removed += 1
         else:
@@ -105,7 +116,7 @@ def inject_single_s0(srec_path: Path, s0_line: str, log: logging.Logger) -> tupl
             term_idx = i
             break
 
-    # Insert our single S0
+    # Insert the new S0 (our version info)
     insert_at = term_idx if term_idx is not None else len(new_lines)
     if term_idx is None:
         log.warning("No termination record (S7/S8/S9) found; appending S0 at the end.")
@@ -113,8 +124,12 @@ def inject_single_s0(srec_path: Path, s0_line: str, log: logging.Logger) -> tupl
     new_lines.insert(insert_at, s0_line)
     srec_path.write_text("".join(new_lines), encoding="utf-8")
 
-    log.info("S0 handling: removed=%d, inserted=1, position=%s", removed, insert_at)
+    log.info(
+        "S0 handling: preserved_header=%s, removed=%d, inserted=1, position=%s",
+        preserve_first_s0, removed, insert_at
+    )
     return True, removed
+
 
 
 
