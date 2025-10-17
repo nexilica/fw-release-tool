@@ -1,6 +1,6 @@
 # fw_release_tool
 
-**fw_release_tool** is a Python-based **post-build automation tool** for STM32 projects (STM32CubeIDE/Eclipse).
+**NXL-FW-Release-Tool** is a Python-based **post-build script for automatic release management** for STM32 projects (STM32CubeIDE/Eclipse).
 
 This tool automates firmware release generation and management:
 - Reads the **firmware version** from a `version.h` file (with customizable `#define` names)
@@ -31,24 +31,24 @@ your-fw-project/
 ├─ Release/
 │  ├─ <build output>
 │  └─ ...
-├─ tools/
+├─ Tools/
 │  ├─ fw_release_tool.py
 │  └─ fw_release.config.json
 └─ ...
 ```
 
-> All **paths in the configuration file are relative to the script directory** (`tools/`).
+> All **paths in the configuration file are relative to the script directory** (`Tools/`).
 
 ---
 
 ## ⚙️ Installation and Integration in STM32CubeIDE
 
-1. Copy `tools/fw_release_tool.py` and `tools/fw_release.config.json` into your repository.
+1. Copy `Tools/fw_release_tool.py` and `Tools/fw_release.config.json` into your repository.
 2. Open **STM32CubeIDE** → *Project → Properties → C/C++ Build → Settings → Build Steps → Post-build steps*
 3. Add this post-build command:
 
 ```bash
-python3 "${ProjDirPath}/tools/fw_release_tool.py" "${ProjDirPath}/Release/${BuildArtifactFileBaseName}.srec"
+python3 "${ProjDirPath}/Tools/fw_release_tool.py" "${ProjDirPath}/Release/${BuildArtifactFileBaseName}.srec"
 ```
 
 ---
@@ -105,12 +105,12 @@ Example configuration:
 ### 📘 Path Reference
 | Field | Description | Relative to |
 |--------|--------------|--------------|
-| `paths.header` | Header with version defines | `tools/` |
-| `paths.srec` | Optional `.srec` path | `tools/` |
-| `outputs.log_path` | CI one-line log file | `tools/` |
-| `outputs.version_file_path` | `fw_version.txt` file | `tools/` |
-| `outputs.tool_version_file_path` | Tool version file | `tools/` |
-| `github.release_notes_path` | Optional release notes file | `tools/` |
+| `paths.header` | Header with version defines | `Tools/` |
+| `paths.srec` | Optional `.srec` path | `Tools/` |
+| `outputs.log_path` | CI one-line log file | `Tools/` |
+| `outputs.version_file_path` | `fw_version.txt` file | `Tools/` |
+| `outputs.tool_version_file_path` | Tool version file | `Tools/` |
+| `github.release_notes_path` | Optional release notes file | `Tools/` |
 
 ---
 
@@ -130,7 +130,7 @@ Define names can be customized in `version.defines` inside the configuration fil
 
 ## 🪵 Logging and Traceability
 
-- **Detailed log**: `tools/fw_release_tool.log`  
+- **Detailed log**: `Tools/fw_release_tool.log`  
   (INFO/WARNING/ERROR + timestamp)
 - **CI log** (if enabled): single-line per build  
   ```
@@ -170,8 +170,8 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxx
 
 | Problem | Likely Cause | Solution |
 |----------|---------------|-----------|
-| `FAIL (see log)` | generic error | check `tools/fw_release_tool.log` |
-| `Config file not found` | file missing or misplaced | ensure it's in `tools/` or CWD |
+| `FAIL (see log)` | generic error | check `Tools/fw_release_tool.log` |
+| `Config file not found` | file missing or misplaced | ensure it's in `Tools/` or CWD |
 | `Define not found` | mismatched define names | update `version.defines` in config |
 | `Git error` | invalid repo or no remote | verify `git remote -v` works |
 | `GitHub API error` | missing or invalid token | export `GITHUB_TOKEN` with `contents:write` permissions |
@@ -185,7 +185,7 @@ Console output:
 OK v1.2.3 -> MyFirmware_v1.2.3.srec (tool 1.0.0)
 ```
 
-`tools/fw_release_tool.log`:
+`Tools/fw_release_tool.log`:
 ```
 2025-10-17T14:25:02+0200 | INFO | Parsed version from header: major=1, minor=2, build=3
 2025-10-17T14:25:02+0200 | INFO | S0 record inserted with text: 'FW 1.2.3'
@@ -208,10 +208,6 @@ OK v1.2.3 -> MyFirmware_v1.2.3.srec (tool 1.0.0)
   - Optional Git tag creation and push
   - Optional GitHub release creation and asset upload
   - Firmware and tool version file generation
-  - Fully JSON-configurable with paths relative to `tools/`
+  - Fully JSON-configurable with paths relative to `Tools/`
 
 ---
-
-## 🗺️ License
-
-Insert your project license here (e.g., MIT, Apache-2.0, etc).
