@@ -13,7 +13,7 @@ import logging
 
 # ============================ Tool version ============================
 TOOL_NAME = "fw_release_tool"
-TOOL_VERSION = "1.0.0"  # <— aggiorna qui quando cambi lo script
+TOOL_VERSION = "1.0.1"  # <— aggiorna qui quando cambi lo script
 
 
 # ============================ Logging Setup ============================
@@ -78,21 +78,44 @@ def srec_s0(text: str, addr: int = 0x0000) -> str:
     return f"S0{count:02X}{addr:04X}{data.hex().upper()}{checksum:02X}\n"
 
 
-def inject_s0_before_termination(srec_path: Path, s0_line: str, log: logging.Logger):
-    """Insert the S0 record before the final S7/S8/S9 termination record."""
-    lines = srec_path.read_text(encoding="utf-8", errors="ignore").splitlines(True)
+def inject_single_s0(srec_path: Path, s0_line: str, log: logging.Logger) -> tuple[bool, int]:
+    """
+    Ensure exactly one S0 record exists in the SREC file.
+    Removes all existing S0 lines and inserts a single new one
+    before the termination record (S7/S8/S9).
+
+    Returns: (inserted: bool, removed_count: int)
+    """
+    text = srec_path.read_text(encoding="utf-8", errors="ignore")
+    lines = text.splitlines(True)
+
+    # Remove all existing S0 lines
+    removed = 0
+    new_lines = []
+    for line in lines:
+        if line.startswith("S0"):
+            removed += 1
+        else:
+            new_lines.append(line)
+
+    # Find termination record
     term_idx = None
-    for i in range(len(lines) - 1, -1, -1):
-        if lines[i].startswith(("S7", "S8", "S9")):
+    for i in range(len(new_lines) - 1, -1, -1):
+        if new_lines[i].startswith(("S7", "S8", "S9")):
             term_idx = i
             break
+
+    # Insert our single S0
+    insert_at = term_idx if term_idx is not None else len(new_lines)
     if term_idx is None:
-        lines.append(s0_line)
-        log.warning("No termination record (S7/S8/S9) found; appended S0 at the end.")
-    else:
-        lines.insert(term_idx, s0_line)
-        log.info("Inserted S0 before termination record at line index %d.", term_idx)
-    srec_path.write_text("".join(lines), encoding="utf-8")
+        log.warning("No termination record (S7/S8/S9) found; appending S0 at the end.")
+
+    new_lines.insert(insert_at, s0_line)
+    srec_path.write_text("".join(new_lines), encoding="utf-8")
+
+    log.info("S0 handling: removed=%d, inserted=1, position=%s", removed, insert_at)
+    return True, removed
+
 
 
 # ============================ Logging helpers ============================
@@ -354,13 +377,19 @@ def main():
 
         # S0
         s0_inserted = False
+        removed_s0 = 0
         if insert_s0:
             s0 = srec_s0(f"{s0_prefix} {version_str}")
-            inject_s0_before_termination(srec_path, s0, log=logger)
-            s0_inserted = True
-            logger.info("S0 record inserted with text: '%s %s'", s0_prefix, version_str)
+            try:
+                s0_inserted, removed_s0 = inject_single_s0(srec_path, s0_line=s0, log=logger)
+                logger.info("S0 record refreshed (removed=%d, inserted=%s)", removed_s0, s0_inserted)
+            except Exception as e:
+                logger.error("Failed to handle S0 record: %s", e)
+                print(f"FAIL v{version_str} (see log)")
+                sys.exit(7)
         else:
             logger.info("S0 insertion disabled by config.")
+        
 
         # Rename/copy
         new_name = srec_path.with_name(f"{srec_path.stem}_v{version_str}{srec_path.suffix}")
