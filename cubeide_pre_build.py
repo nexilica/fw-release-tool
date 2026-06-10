@@ -35,9 +35,14 @@ DEFAULT_DATE_DEFINES = {"year": "FW_BUILD_YEAR",
 
 
 def find_config(script_dir: Path) -> Path:
-    """Auto-discover the shared config (CWD first, then the script directory)."""
+    """Auto-discover the shared config: CWD, the script directory, then the
+    script's parent directory (the project root when the tool is a submodule,
+    e.g. mounted at <project>/Tools/)."""
     cwd = Path.cwd()
-    for base in (cwd, cwd / "tools", script_dir, script_dir / "tools"):
+    bases = (cwd, cwd / "tools",
+             script_dir, script_dir / "tools",
+             script_dir.parent, script_dir.parent / "tools")
+    for base in bases:
         c = base / CONFIG_NAME
         if c.exists():
             return c

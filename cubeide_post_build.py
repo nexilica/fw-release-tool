@@ -274,11 +274,8 @@ def create_github_release(*, owner_repo: str, token: str, tag: str, name: str,
 def find_config_path(script_dir: Path) -> Path:
     """
     Auto-discover a JSON config file.
-    Search order (relative to execution CWD first, then script directory):
-      1) CWD/cubeide_build.config.json
-      2) CWD/tools/cubeide_build.config.json
-      3) <script_dir>/cubeide_build.config.json
-      4) <script_dir>/tools/cubeide_build.config.json
+    Search order: CWD, the script directory, then the script's parent directory
+    (the project root when the tool is a submodule, e.g. <project>/Tools/).
     """
     cwd = Path.cwd()
     candidates = [
@@ -286,6 +283,8 @@ def find_config_path(script_dir: Path) -> Path:
         cwd / "tools" / "cubeide_build.config.json",
         script_dir / "cubeide_build.config.json",
         script_dir / "tools" / "cubeide_build.config.json",
+        script_dir.parent / "cubeide_build.config.json",
+        script_dir.parent / "tools" / "cubeide_build.config.json",
     ]
     for c in candidates:
         if c.exists():
