@@ -1,0 +1,48 @@
+{
+  "paths": {
+    "header": "../Core/Src/Dev/version.h",
+    "srec": ""
+  },
+  "version": {
+    "defines": {
+      "major": "FW_VERSION_MAJOR",
+      "minor": "FW_VERSION_MINOR",
+      "build": "FW_VERSION_BUILD"
+    }
+  },
+  "date": {
+    "defines": {
+      "year": "FW_BUILD_YEAR",
+      "month": "FW_BUILD_MONTH",
+      "day": "FW_BUILD_DAY"
+    }
+  },
+  "behavior": {
+    "insert_s0": true,
+    "s0_prefix": "FW",
+    "rename_mode": "copy",
+    "quiet": false
+  },
+  "outputs": {
+    "write_log": true,
+    "log_path": "../Release/build_info.log",
+    "write_version_file": false,
+    "version_file_path": "../Release/fw_version.txt",
+    "write_tool_version_file": false,
+    "tool_version_file_path": ""
+  },
+  "git": {
+    "tag": false,
+    "remote": "origin"
+  },
+  "github": {
+    "release": false,
+    "repository": "nexilica/cannect-fw",
+    "token_env": "GITHUB_TOKEN",
+    "release_name": "",
+    "release_notes_path": "",
+    "draft": false,
+    "prerelease": false,
+    "generate_notes": true
+  }
+}
