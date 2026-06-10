@@ -20,6 +20,36 @@ FAIL (see log)
 
 ---
 
+## 🛠 CubeIDE pre/post-build scripts (build-date stamping)
+
+In addition to `fw_release_tool.py` (the original post-build tool, unchanged),
+this repo ships a CubeIDE build-step pair that also stamps the **build date**:
+
+| Script | CubeIDE step | Does |
+|---|---|---|
+| `cubeide_pre_build.py` | Pre-build | Injects today's date into `version.h` (`date.defines` → `FW_BUILD_YEAR/MONTH/DAY`), so the date is compiled into the binary. |
+| `cubeide_post_build.py` | Post-build | Independent copy of `fw_release_tool.py`: reads the version from `version.h`, stamps the S0 record and renames the `.srec`. |
+
+Both read **one shared config**, `cubeide_build.config.json` (same schema as
+`fw_release.config.json` plus a `date.defines` block). See
+`config-examples/cubeide_build.config.json` and `version_example.h` for the
+exact macro names. Names are per-project — map them in the config to a prefixed
+header (e.g. `CANNECT_FW_VERSION_MAJOR`, `CANNECT_FW_BUILD_YEAR`).
+
+CubeIDE *Project ▸ Properties ▸ C/C++ Build ▸ Settings ▸ Build Steps*:
+
+```bash
+# Pre-build
+python3 "${ProjDirPath}/Tools/cubeide_pre_build.py"
+# Post-build
+python3 "${ProjDirPath}/Tools/cubeide_post_build.py" "${ProjDirPath}/Release/${BuildArtifactFileBaseName}.srec"
+```
+
+> `cubeide_pre_build.py` rewrites `version.h` in place on every build, so the
+> file shows as modified afterwards (enable it on the Release config only).
+
+---
+
 ## 📁 Typical Project Structure
 
 ```
