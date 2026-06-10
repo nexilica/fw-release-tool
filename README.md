@@ -36,6 +36,15 @@ Both read **one shared config**, `cubeide_build.config.json` (same schema as
 exact macro names. Names are per-project — map them in the config to a prefixed
 header (e.g. `CANNECT_FW_VERSION_MAJOR`, `CANNECT_FW_BUILD_YEAR`).
 
+**Config placement / discovery.** The scripts look for `cubeide_build.config.json`
+in this order: the current working directory, the script directory, then the
+**script's parent directory**. When this tool is a **submodule** mounted at
+`<project>/Tools/`, keep the config in the **project root** (`<project>/cubeide_build.config.json`)
+so it is tracked by the project (not the submodule) and is found regardless of
+the build-step working directory. Paths inside the config (`paths.header`) are
+resolved **relative to the script directory** — e.g. `../Application/version.h`
+from `Tools/`.
+
 CubeIDE *Project ▸ Properties ▸ C/C++ Build ▸ Settings ▸ Build Steps*:
 
 ```bash
