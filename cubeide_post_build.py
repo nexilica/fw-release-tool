@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """cubeide_post_build.py — STM32CubeIDE post-build release packaging.
 
-Independent copy of fw_release_tool.py (kept untouched so IROS/Pressor are not
-affected). Reads the firmware version from version.h and produces the release
+Independent copy of fw_release_tool.py (kept separate so projects already wired
+to fw_release_tool.py are not affected). Reads the firmware version from version.h and produces the release
 S-Record (S0 stamping + rename), optional logs / git tag / GitHub release.
 Configured via cubeide_build.config.json (shared with cubeide_pre_build.py).
 Pair it with cubeide_pre_build.py, which injects the build date pre-build.
