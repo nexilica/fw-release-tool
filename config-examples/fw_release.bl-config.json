@@ -1,13 +1,13 @@
 {
   "paths": {
-    "header": "../App/version.h",
+    "header": "../Application/version.h",
     "srec": ""
   },
   "version": {
     "defines": {
-      "major": "BL_VERSION_MAJOR",
-      "minor": "BL_VERSION_MINOR",
-      "build": "BL_VERSION_BUILD"
+      "major": "BL_FW_VERSION_MAJOR",
+      "minor": "BL_FW_VERSION_MINOR",
+      "build": "BL_FW_VERSION_PATCH"
     }
   },
   "behavior": {
@@ -30,7 +30,7 @@
   },
   "github": {
     "release": false,
-    "repository": "nexilica/NXL-BL-STM32F0-CAN",
+    "repository": "your-org/your-bootloader",
     "token_env": "GITHUB_TOKEN",
     "release_name": "",
     "release_notes_path": "",

@@ -1,18 +1,18 @@
 {
   "paths": {
-    "header": "../Core/Src/Dev/version.h",
+    "header": "../Application/version.h",
     "srec": ""
   },
   "version": {
     "defines": {
-      "major": "FW_VERSION_MAJOR",
-      "minor": "FW_VERSION_MINOR",
-      "build": "FW_VERSION_BUILD"
+      "major": "APP_FW_VERSION_MAJOR",
+      "minor": "APP_FW_VERSION_MINOR",
+      "build": "APP_FW_VERSION_PATCH"
     }
   },
   "behavior": {
     "insert_s0": true,
-    "s0_prefix": "FW",
+    "s0_prefix": "APP",
     "rename_mode": "copy",
     "quiet": false
   },
@@ -30,7 +30,7 @@
   },
   "github": {
     "release": false,
-    "repository": "nexilica/Pressor",
+    "repository": "your-org/your-firmware",
     "token_env": "GITHUB_TOKEN",
     "release_name": "",
     "release_notes_path": "",
