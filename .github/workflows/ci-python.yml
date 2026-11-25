@@ -1,0 +1,52 @@
+# Vendored by /nexilica-dev:repo-init as .github/workflows/ci-python.yml;
+# refresh with /nexilica-dev:sync-rules. The gate steps mirror rules/python.md:
+# what passes here must pass locally, and vice versa. Local gates are opt-in per
+# repo; this job is the source of truth. Edit only the marked variation points;
+# never weaken the gates.
+name: CI (Python)
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', '.gitignore', '.claude/**']
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', '.gitignore', '.claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-python-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  tested:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/merge-tested.yml
+    with:
+      workflow: ci-python.yml
+    permissions:
+      actions: read
+      contents: read
+
+  gates:
+    name: Lint, types, tests
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.tested != 'true' }}
+    runs-on: ubuntu-latest  # variation point: public repo, never a self-hosted runner
+    timeout-minutes: 15
+    # variation point - GUI/Qt repos: uncomment to run headless
+    # env:
+    #   QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # --all-extras is a no-op without optional deps; keeps pyright/pytest
+      # resolving them. --locked fails fast on a stale uv.lock.
+      - run: uv sync --locked --all-extras
+      - run: uv run --frozen --all-extras ruff check .
+      - run: uv run --frozen --all-extras ruff format --check .
+      - run: uv run --frozen --all-extras pyright
+      - run: uv run --frozen --all-extras pytest -q -m "not integration"
