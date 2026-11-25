@@ -22,6 +22,7 @@ Config (cubeide_build.config.json), date block:
 
 Paths in the config are relative to this script's directory (the Tools/ folder).
 """
+
 import datetime
 import json
 import re
@@ -29,9 +30,11 @@ import sys
 from pathlib import Path
 
 CONFIG_NAME = "cubeide_build.config.json"
-DEFAULT_DATE_DEFINES = {"year": "FW_BUILD_YEAR",
-                        "month": "FW_BUILD_MONTH",
-                        "day": "FW_BUILD_DAY"}
+DEFAULT_DATE_DEFINES = {
+    "year": "FW_BUILD_YEAR",
+    "month": "FW_BUILD_MONTH",
+    "day": "FW_BUILD_DAY",
+}
 
 
 def find_config(script_dir: Path) -> Path:
@@ -39,14 +42,21 @@ def find_config(script_dir: Path) -> Path:
     script's parent directory (the project root when the tool is a submodule,
     e.g. mounted at <project>/Tools/)."""
     cwd = Path.cwd()
-    bases = (cwd, cwd / "tools",
-             script_dir, script_dir / "tools",
-             script_dir.parent, script_dir.parent / "tools")
+    bases = (
+        cwd,
+        cwd / "tools",
+        script_dir,
+        script_dir / "tools",
+        script_dir.parent,
+        script_dir.parent / "tools",
+    )
     for base in bases:
         c = base / CONFIG_NAME
         if c.exists():
             return c
-    raise FileNotFoundError(f"{CONFIG_NAME} not found in execution path or script folder.")
+    raise FileNotFoundError(
+        f"{CONFIG_NAME} not found in execution path or script folder."
+    )
 
 
 def resolve_from_script(path_str: str, script_dir: Path) -> Path:
@@ -59,10 +69,10 @@ def inject_define(text: str, define_name: str, value: int) -> str:
     """Rewrite ``#define NAME <number>`` in place, preserving any trailing
     comment/suffix. Accepts a decimal or hex literal. Raises if not found."""
     pattern = re.compile(
-        rf'^(\s*#define\s+{re.escape(define_name)}\s+)([0-9]+|0[xX][0-9a-fA-F]+)(\b.*)$',
-        re.M,
+        rf"^(\s*#define\s+{re.escape(define_name)}\s+)([0-9]+|0[xX][0-9a-fA-F]+)(\b.*)$",
+        re.MULTILINE,
     )
-    new_text, n = pattern.subn(rf'\g<1>{value}\g<3>', text)
+    new_text, n = pattern.subn(rf"\g<1>{value}\g<3>", text)
     if n == 0:
         raise RuntimeError(f"Define {define_name} not found in header.")
     return new_text
