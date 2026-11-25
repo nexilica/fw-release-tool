@@ -1,0 +1,24 @@
+[project]
+name = "fw-release-tool"
+version = "1.0.2"
+description = "STM32CubeIDE pre/post-build steps: build-date stamping, S0 version record, versioned S-Record"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.ruff]
+extend-exclude = [".claude"]
+
+[tool.pyright]
+pythonVersion = "3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["integration: needs a real external service"]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=8.4.2",
+    "ruff>=0.17.6",
+]
