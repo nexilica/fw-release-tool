@@ -1,17 +1,14 @@
-# Vendored by /nexilica-dev:repo-init as .github/workflows/ci-python.yml;
-# refresh with /nexilica-dev:sync-rules. The gate steps mirror rules/python.md:
-# what passes here must pass locally, and vice versa. Local gates are opt-in per
-# repo; this job is the source of truth. Edit only the marked variation points;
-# never weaken the gates.
+# The gate steps mirror the README's Development section: what passes here
+# must pass locally, and vice versa.
 name: CI (Python)
 
 on:
   pull_request:
     branches: [main]
-    paths-ignore: ['**.md', 'docs/**', '.gitignore', '.claude/**']
+    paths-ignore: ['**.md', 'docs/**', '.gitignore']
   push:
     branches: [main]
-    paths-ignore: ['**.md', 'docs/**', '.gitignore', '.claude/**']
+    paths-ignore: ['**.md', 'docs/**', '.gitignore']
   workflow_dispatch:
 
 permissions:

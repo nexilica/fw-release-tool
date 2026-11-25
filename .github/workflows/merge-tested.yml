@@ -1,6 +1,3 @@
-# Vendored by /nexilica-dev:repo-init as .github/workflows/merge-tested.yml,
-# alongside every ci-<lang>.yml; refresh with /nexilica-dev:sync-rules.
-#
 # Called by the gate workflows on a push to main. A merge commit whose first
 # parent (main before the merge) is an ancestor of its second (the PR head)
 # lands on main exactly the tree the PR's pull_request run checked out: the

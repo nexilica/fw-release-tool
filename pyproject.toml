@@ -5,9 +5,6 @@ description = "STM32CubeIDE pre/post-build steps: build-date stamping, S0 versio
 requires-python = ">=3.9"
 dependencies = []
 
-[tool.ruff]
-extend-exclude = [".claude"]
-
 [tool.pyright]
 pythonVersion = "3.9"
 
