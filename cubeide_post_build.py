@@ -10,6 +10,7 @@ Pair it with cubeide_pre_build.py, which injects the build date pre-build.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import logging
@@ -19,6 +20,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
+from http.client import HTTPException
 from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
@@ -54,7 +56,9 @@ def setup_script_logger() -> logging.Logger:
 # ====================== Core parsing / SREC utilities ======================
 
 
-def parse_version_from_header(hdr_path: Path, names: dict, log: logging.Logger):
+def parse_version_from_header(
+    hdr_path: Path, names: dict, log: logging.Logger
+) -> tuple[int, int, int]:
     """
     Parse version macros from header using custom define names.
     Accepts decimal or hex literals (e.g., 12, 0x0C).
@@ -171,7 +175,7 @@ def write_ci_log(
     sha256: str = "",
     tool_version: str = "",
     log: logging.Logger | None = None,
-):
+) -> None:
     """Append one structured line to the build log (CI-friendly)."""
     ts = datetime.now(timezone.utc).isoformat()
     line = (
@@ -186,7 +190,9 @@ def write_ci_log(
         log.info("Appended CI log: %s", log_path)
 
 
-def run(cmd, cwd=None, log: logging.Logger | None = None):
+def run(
+    cmd: list[str], cwd: Path | None = None, log: logging.Logger | None = None
+) -> tuple[int, str, str]:
     """Run a command and return (rc, stdout, stderr)."""
     if log:
         log.info("Executing command: %s", " ".join(cmd))
@@ -209,7 +215,9 @@ def run(cmd, cwd=None, log: logging.Logger | None = None):
 # ============================ Git / GitHub ============================
 
 
-def git_tag_and_push(version_tag: str, message: str, remote: str, log: logging.Logger):
+def git_tag_and_push(
+    version_tag: str, message: str, remote: str, log: logging.Logger
+) -> None:
     """Create an annotated tag and push it to the remote."""
     rc, out, err = run(["git", "rev-parse", "--is-inside-work-tree"], log=log)
     if rc != 0 or out != "true":
@@ -239,7 +247,7 @@ def http_json(
     payload: dict,
     log: logging.Logger,
     extra_headers: dict | None = None,
-):
+) -> tuple[int, Any]:
     """Make an HTTP request with JSON payload and Bearer token."""
     headers = {
         "Authorization": f"Bearer {token}",
@@ -264,7 +272,7 @@ def http_json(
 
 def http_upload_asset(
     upload_url_template: str, asset_path: Path, token: str, log: logging.Logger
-):
+) -> tuple[int, Any]:
     """Upload a release asset to the GitHub uploads endpoint."""
     base = upload_url_template.split("{")[0]
     name = asset_path.name
@@ -303,7 +311,7 @@ def create_github_release(
     generate_notes: bool,
     asset: Path,
     log: logging.Logger,
-):
+) -> Any:
     """Create a GitHub release and optionally upload an asset."""
     api_base = "https://api.github.com"
     url = f"{api_base}/repos/{owner_repo}/releases"
@@ -354,7 +362,7 @@ def find_config_path(script_dir: Path) -> Path:
     )
 
 
-def load_config_auto(log: logging.Logger, script_dir: Path):
+def load_config_auto(log: logging.Logger, script_dir: Path) -> tuple[dict, Path]:
     """Load configuration from auto-discovered JSON file. Returns (dict, path)."""
     cfg_file = find_config_path(script_dir)
     try:
@@ -386,13 +394,11 @@ def resolve_from_script(path_str: str, script_dir: Path) -> Path:
 # ============================ Main ============================
 
 
-def main():
+def main() -> None:
     logger = setup_script_logger()
     script_dir = Path(__file__).resolve().parent
     logger.info("%s starting (tool_version=%s)", TOOL_NAME, TOOL_VERSION)
     try:
-        import argparse
-
         parser = argparse.ArgumentParser(
             description="Versioned SREC tool (config-driven): insert S0, rename/copy, logging, optional git tag and GitHub release."
         )
@@ -498,8 +504,8 @@ def main():
                     removed_s0,
                     s0_inserted,
                 )
-            except Exception as e:  # noqa: BLE001
-                logger.error("Failed to handle S0 record: %s", e)
+            except (OSError, RuntimeError, ValueError):
+                logger.exception("Failed to handle S0 record")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(7)
         else:
@@ -587,8 +593,8 @@ def main():
                     remote=git_remote,
                     log=logger,
                 )
-            except Exception as e:  # noqa: BLE001
-                logger.error("Git tag/push failed: %s", e)
+            except (OSError, RuntimeError):
+                logger.exception("Failed to create or push the git tag")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(2)
 
@@ -617,8 +623,8 @@ def main():
                     remote=git_remote,
                     log=logger,
                 )
-            except Exception as e:  # noqa: BLE001
-                logger.error("Needed to create/push tag for release but failed: %s", e)
+            except (OSError, RuntimeError):
+                logger.exception("Failed to create or push the tag for the release")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(5)
 
@@ -646,8 +652,8 @@ def main():
                     asset=new_name,
                     log=logger,
                 )
-            except Exception as e:  # noqa: BLE001
-                logger.error("GitHub release failed: %s", e)
+            except (OSError, RuntimeError, ValueError, KeyError, HTTPException):
+                logger.exception("Failed to create the GitHub release")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(6)
 
