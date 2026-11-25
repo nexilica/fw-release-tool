@@ -131,8 +131,9 @@ date.
 
 ## Configuration reference
 
-`config-examples/` holds a complete `cubeide_build.config.json` and two
-`fw_release.config.json` variants (application and bootloader). All keys are
+`config-examples/` holds a complete `cubeide_build.config.json` and, for
+`fw_release_tool.py`, an application and a bootloader variant: copy one as
+`fw_release.config.json`, the only name that script looks for. All keys are
 optional except `paths.header`.
 
 | Key | Default | Meaning |
@@ -203,13 +204,13 @@ the exit code says which step failed:
 | Code | Step |
 |---|---|
 | 0 | Success |
-| 1 | Config, header or S-Record error (missing file, missing define, invalid JSON) |
+| 1 | Config or header error (missing file, missing define, invalid JSON); a missing S-Record when `insert_s0` is off |
 | 2 | Git tag creation or push (`git.tag`) |
 | 3 | `github.release` on with an empty `github.repository` |
 | 4 | Token variable `github.token_env` not set |
 | 5 | Tag creation or push needed by the GitHub release |
 | 6 | GitHub release creation or asset upload |
-| 7 | S0 record handling |
+| 7 | S0 record handling, including a missing or unreadable S-Record |
 
 The pre-build prints `OK build date YYYY-MM-DD -> version.h`, or
 `FAIL cubeide_pre_build: <reason>` with exit code 1.
