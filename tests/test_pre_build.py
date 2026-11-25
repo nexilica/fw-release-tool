@@ -13,6 +13,15 @@ HEADER = """#define APP_FW_VERSION_MAJOR  1
 """
 
 
+class FixedDate(datetime.date):
+    """A date whose today() is always 2026-03-07."""
+
+    @classmethod
+    def today(cls) -> "FixedDate":
+        """Return the fixed build date."""
+        return cls(2026, 3, 7)
+
+
 def write_project(root: Path, header_text: str) -> Path:
     """Write a header and a cubeide_build.config.json pointing at it; return the header path."""
     header = root / "version.h"
@@ -38,18 +47,18 @@ def test_pre_build_stamps_today_into_the_mapped_defines(
 ) -> None:
     header = write_project(tmp_path, HEADER)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(datetime, "date", FixedDate)
 
     rc = cubeide_pre_build.main()
 
-    today = datetime.date.today()
     assert rc == 0
     assert header.read_text(encoding="utf-8") == (
         "#define APP_FW_VERSION_MAJOR  1\n"
-        f"#define APP_FW_BUILD_YEAR   {today.year}   /* stamped */\n"
-        f"#define APP_FW_BUILD_MONTH  {today.month}\n"
-        f"#define APP_FW_BUILD_DAY    {today.day}\n"
+        "#define APP_FW_BUILD_YEAR   2026   /* stamped */\n"
+        "#define APP_FW_BUILD_MONTH  3\n"
+        "#define APP_FW_BUILD_DAY    7\n"
     )
-    assert capsys.readouterr().out.startswith(f"OK build date {today.isoformat()}")
+    assert capsys.readouterr().out.startswith("OK build date 2026-03-07")
 
 
 def test_pre_build_fails_and_leaves_header_untouched_when_a_define_is_missing(
