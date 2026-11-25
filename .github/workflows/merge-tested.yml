@@ -1,0 +1,60 @@
+# Called by the gate workflows on a push to main. A merge commit whose first
+# parent (main before the merge) is an ancestor of its second (the PR head)
+# lands on main exactly the tree the PR's pull_request run checked out: the
+# merge ref of every run on that head was built on main at or after the first
+# parent, and the head already contained it. If that run succeeded, the push
+# re-runs nothing. Anything else - a squash, a branch behind main, a PR merged
+# red or never run, an API error - answers false and the gates run.
+name: Merge already tested
+
+on:
+  workflow_call:
+    inputs:
+      workflow:
+        description: 'Workflow file whose pull_request run must have passed (e.g. ci-python.yml)'
+        required: true
+        type: string
+    outputs:
+      tested:
+        description: "'true' when a successful pull_request run already checked this tree"
+        value: ${{ jobs.check.outputs.tested }}
+
+jobs:
+  check:
+    name: Tested on the PR
+    runs-on: ubuntu-latest  # variation point: public repo, never a self-hosted runner
+    timeout-minutes: 2
+    outputs:
+      tested: ${{ steps.check.outputs.result }}
+    steps:
+      # github-script rather than the gh CLI: this runs on the Actions node
+      # runtime, which every runner has, self-hosted included.
+      - id: check
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          WORKFLOW: ${{ inputs.workflow }}
+        with:
+          result-encoding: string
+          script: |
+            const { owner, repo } = context.repo;
+            let tested = false;
+            try {
+              const { data: commit } = await github.rest.repos.getCommit({ owner, repo, ref: context.sha });
+              if (commit.parents.length === 2) {
+                const [mainBefore, prHead] = commit.parents.map((p) => p.sha);
+                const { data: cmp } = await github.rest.repos.compareCommitsWithBasehead({
+                  owner, repo, basehead: `${mainBefore}...${prHead}`,
+                });
+                // The newest run decides: an older success must not mask a
+                // later red or still-running one.
+                const { data: runs } = await github.rest.actions.listWorkflowRuns({
+                  owner, repo, workflow_id: process.env.WORKFLOW, head_sha: prHead,
+                  event: 'pull_request', per_page: 1,
+                });
+                tested = cmp.behind_by === 0 && runs.workflow_runs[0]?.conclusion === 'success';
+              }
+            } catch (err) {
+              core.warning(`merge-tested: ${err.message}`);
+            }
+            core.info(`Already tested on the PR: ${tested}`);
+            return String(tested);

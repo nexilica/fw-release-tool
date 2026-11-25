@@ -1,252 +1,241 @@
-# fw_release_tool
+# fw-release-tool
 
-**NXL-FW-Release-Tool** is a Python-based **post-build script for automatic release management** for STM32 projects (STM32CubeIDE/Eclipse).
+Pre- and post-build steps for STM32CubeIDE projects that turn a build into a
+traceable firmware release:
 
-This tool automates firmware release generation and management:
-- Reads the **firmware version** from a `version.h` file (with customizable `#define` names)
-- Optionally inserts an **S0 record** into the S-Record
-- Renames or copies the `.srec` file to `Name_vX.Y.Z.srec`
-- Writes detailed logs and version files
-- Can automatically create **Git tags** and **GitHub releases**
+- **Pre-build** - stamps the build date into the project's `version.h`, so the
+  date is compiled into the binary.
+- **Post-build** - reads the firmware version from `version.h`, writes it into
+  the S-Record as an S0 record, and copies or renames the `.srec` to
+  `<name>_vX.Y.Z.srec`. Optionally it appends a one-line build log, writes
+  version files, pushes a `vX.Y.Z` git tag and creates a GitHub release with
+  the S-Record attached.
 
-Console output: only the final result  
+On success the post-build prints a single line, and the build console shows
+it:
+
+```text
+OK v1.2.3 -> Firmware_v1.2.3.srec (tool 1.0.2)
 ```
-OK v1.2.3 -> Firmware_v1.2.3.srec (tool 1.0.0)
-```
-or  
-```
-FAIL (see log)
-```
 
----
+## Scripts
 
-## 🛠 CubeIDE pre/post-build scripts (build-date stamping)
-
-In addition to `fw_release_tool.py` (the original post-build tool, unchanged),
-this repo ships a CubeIDE build-step pair that also stamps the **build date**:
-
-| Script | CubeIDE step | Does |
+| Script | Build step | Config file |
 |---|---|---|
-| `cubeide_pre_build.py` | Pre-build | Injects today's date into `version.h` (`date.defines` → `FW_BUILD_YEAR/MONTH/DAY`), so the date is compiled into the binary. |
-| `cubeide_post_build.py` | Post-build | Independent copy of `fw_release_tool.py`: reads the version from `version.h`, stamps the S0 record and renames the `.srec`. |
+| `cubeide_pre_build.py` | Pre-build | `cubeide_build.config.json` |
+| `cubeide_post_build.py` | Post-build | `cubeide_build.config.json` |
+| `fw_release_tool.py` | Post-build (standalone) | `fw_release.config.json` |
 
-Both read **one shared config**, `cubeide_build.config.json` (same schema as
-`fw_release.config.json` plus a `date.defines` block). See
-`config-examples/cubeide_build.config.json` and `version_example.h` for the
-exact macro names. Names are per-project — map them in the config to a prefixed
-header (e.g. `CANNECT_FW_VERSION_MAJOR`, `CANNECT_FW_BUILD_YEAR`).
+`cubeide_pre_build.py` and `cubeide_post_build.py` are the pair to use on a
+new project: they share one config file. `fw_release_tool.py` is the same
+post-build logic with its own config file, for projects that do not stamp the
+build date.
 
-**Config placement / discovery.** The scripts look for `cubeide_build.config.json`
-in this order: the current working directory, the script directory, then the
-**script's parent directory**. When this tool is a **submodule** mounted at
-`<project>/Tools/`, keep the config in the **project root** (`<project>/cubeide_build.config.json`)
-so it is tracked by the project (not the submodule) and is found regardless of
-the build-step working directory. Paths inside the config (`paths.header`) are
-resolved **relative to the script directory** — e.g. `../Application/version.h`
-from `Tools/`.
+## Requirements
 
-CubeIDE *Project ▸ Properties ▸ C/C++ Build ▸ Settings ▸ Build Steps*:
+- Python 3.9 or newer on the machine that runs CubeIDE, available as
+  `python3`.
+- Standard library only: nothing to install.
+- `git` on the `PATH` for the branch and commit in the build log and for
+  tagging.
+
+## Installation
+
+Mount the repository as a git submodule at `Tools/` in the CubeIDE project
+directory (the folder holding `.project` and `.cproject`):
 
 ```bash
-# Pre-build
+git submodule add https://github.com/nexilica/fw-release-tool.git Tools
+```
+
+Put `cubeide_build.config.json` in the project directory, next to
+`.cproject`, so it is tracked by the project rather than by the submodule.
+Start from `config-examples/cubeide_build.config.json` and map the macro names
+to your `version.h`.
+
+Resulting layout:
+
+```text
+your-fw-project/
+  .cproject
+  cubeide_build.config.json
+  Application/
+    version.h
+  Release/
+    <build output>
+  Tools/                      (this repository)
+    cubeide_pre_build.py
+    cubeide_post_build.py
+```
+
+Then add the build steps in CubeIDE under *Project > Properties > C/C++ Build
+> Settings > Build Steps*, on the **Release** configuration only - the
+pre-build rewrites `version.h` on every build:
+
+```bash
+# Pre-build steps
 python3 "${ProjDirPath}/Tools/cubeide_pre_build.py"
-# Post-build
+
+# Post-build steps
 python3 "${ProjDirPath}/Tools/cubeide_post_build.py" "${ProjDirPath}/Release/${BuildArtifactFileBaseName}.srec"
 ```
 
-> `cubeide_pre_build.py` rewrites `version.h` in place on every build, so the
-> file shows as modified afterwards (enable it on the Release config only).
+The S-Record output must be enabled in the project's post-build settings
+(*MCU Post build outputs > Convert to Motorola S-record file*).
 
----
+## Config discovery
 
-## 📁 Typical Project Structure
+The scripts search for their config file in this order and use the first one
+found:
 
-```
-your-fw-project/
-├─ Core/
-│  └─ Src/
-│     └─ Dev/
-│        └─ version.h
-├─ Release/
-│  ├─ <build output>
-│  └─ ...
-├─ Tools/
-│  ├─ fw_release_tool.py
-│  └─ fw_release.config.json
-└─ ...
-```
+| Order | `cubeide_pre_build.py`, `cubeide_post_build.py` | `fw_release_tool.py` |
+|---|---|---|
+| 1 | `<cwd>/cubeide_build.config.json` | `<cwd>/fw_release.config.json` |
+| 2 | `<cwd>/tools/cubeide_build.config.json` | `<cwd>/tools/fw_release.config.json` |
+| 3 | `<script dir>/cubeide_build.config.json` | `<script dir>/fw_release.config.json` |
+| 4 | `<script dir>/tools/cubeide_build.config.json` | `<script dir>/tools/fw_release.config.json` |
+| 5 | `<script dir>/../cubeide_build.config.json` | - |
+| 6 | `<script dir>/../tools/cubeide_build.config.json` | - |
 
-> All **paths in the configuration file are relative to the script directory** (`Tools/`).
+Step 5 is what finds the config in the project directory when the scripts sit
+in the `Tools/` submodule, whatever working directory CubeIDE runs the build
+step from.
 
----
+Relative paths inside the config are resolved against the **script
+directory** (`Tools/`), not against the config file: a header in
+`Application/` is `../Application/version.h`. Absolute paths are used as
+they are.
 
-## ⚙️ Installation and Integration in STM32CubeIDE
+## version.h
 
-1. Copy `Tools/fw_release_tool.py` and `Tools/fw_release.config.json` into your repository.
-2. Open **STM32CubeIDE** → *Project → Properties → C/C++ Build → Settings → Build Steps → Post-build steps*
-3. Add this post-build command:
-
-```bash
-python3 "${ProjDirPath}/Tools/fw_release_tool.py" "${ProjDirPath}/Release/${BuildArtifactFileBaseName}.srec"
-```
-
----
-
-## 🧩 Configuration File (`fw_release.config.json`)
-
-This file controls the full behavior of the script.  
-Example configuration:
-
-```json
-{
-  "paths": {
-    "header": "../Core/Src/Dev/version.h",
-    "srec": ""  // optional: leave empty and pass .srec path via CLI
-  },
-  "version": {
-    "defines": {
-      "major": "FW_VERSION_MAJOR",
-      "minor": "FW_VERSION_MINOR",
-      "build": "FW_VERSION_BUILD"
-    }
-  },
-  "behavior": {
-    "insert_s0": true,                 // insert S0 record with text "FW X.Y.Z"
-    "s0_prefix": "FW",
-    "rename_mode": "rename",           // "rename" or "copy"
-    "quiet": false                     // if true, console output reduced to "OK vX.Y.Z"
-  },
-  "outputs": {
-    "write_log": true,                 // enable CI one-line log
-    "log_path": "../Release/build_info.log",
-    "write_version_file": true,        // writes fw_version.txt
-    "version_file_path": "../Release/fw_version.txt",
-    "write_tool_version_file": true,   // writes script version file
-    "tool_version_file_path": ""       // empty -> tools/fw_release_tool.version
-  },
-  "git": {
-    "tag": false,                      // true -> create/push Git tag vX.Y.Z
-    "remote": "origin"
-  },
-  "github": {
-    "release": false,                  // true -> create GitHub release
-    "repository": "owner/repo",        // e.g. "nexilica/my-firmware"
-    "token_env": "GITHUB_TOKEN",       // environment variable with token
-    "release_name": "",
-    "release_notes_path": "",
-    "draft": false,
-    "prerelease": false,
-    "generate_notes": true
-  }
-}
-```
-
-### 📘 Path Reference
-| Field | Description | Relative to |
-|--------|--------------|--------------|
-| `paths.header` | Header with version defines | `Tools/` |
-| `paths.srec` | Optional `.srec` path | `Tools/` |
-| `outputs.log_path` | CI one-line log file | `Tools/` |
-| `outputs.version_file_path` | `fw_version.txt` file | `Tools/` |
-| `outputs.tool_version_file_path` | Tool version file | `Tools/` |
-| `github.release_notes_path` | Optional release notes file | `Tools/` |
-
----
-
-## 🔢 Firmware Version
-
-The header file must contain three numeric defines (decimal or hexadecimal):
+The header must define the three version numbers, and for the pre-build the
+three date fields, as plain integer literals (decimal or `0x` hex, no `u`
+suffix - the scripts read them with a regular expression):
 
 ```c
-#define FW_VERSION_MAJOR  1
-#define FW_VERSION_MINOR  0
-#define FW_VERSION_BUILD  2
+#define APP_FW_VERSION_MAJOR  1
+#define APP_FW_VERSION_MINOR  2
+#define APP_FW_VERSION_PATCH  3
+
+#define APP_FW_BUILD_YEAR   0
+#define APP_FW_BUILD_MONTH  0
+#define APP_FW_BUILD_DAY    0
 ```
 
-Define names can be customized in `version.defines` inside the configuration file.
+The macro names are free: the config maps them (`version.defines`,
+`date.defines`). Commit the date fields as `0`, meaning "not stamped": the
+pre-build overwrites the numbers in place, keeping any trailing comment, and
+leaves the file modified after a Release build. `version_example.h` is a
+complete reference header, including the packed 32-bit forms of version and
+date.
 
----
+## Configuration reference
 
-## 🪵 Logging and Traceability
+`config-examples/` holds a complete `cubeide_build.config.json` and, for
+`fw_release_tool.py`, an application and a bootloader variant: copy one as
+`fw_release.config.json`, the only name that script looks for. All keys are
+optional except `paths.header`.
 
-- **Detailed log**: `Tools/fw_release_tool.log`  
-  (INFO/WARNING/ERROR + timestamp)
-- **CI log** (if enabled): single-line per build  
-  ```
-  2025-10-17T14:22:35Z | tool=1.0.0 | version=2.3.5 | S0=yes | action=renamed | output=MyApp_v2.3.5.srec | branch=main | commit=abc1234 | sha256=...
-  ```
-- **Firmware version file**: contains only `X.Y.Z`
-- **Tool version file**: contains the script version (`1.0.0`)
+| Key | Default | Meaning |
+|---|---|---|
+| `paths.header` | - | Header with the version and date defines. |
+| `paths.srec` | `""` | S-Record to process; the command-line argument takes precedence. |
+| `version.defines.major` | `FW_VERSION_MAJOR` | Macro holding the major version. |
+| `version.defines.minor` | `FW_VERSION_MINOR` | Macro holding the minor version. |
+| `version.defines.build` | `FW_VERSION_BUILD` | Macro holding the patch (build) number. |
+| `date.defines.year` | `FW_BUILD_YEAR` | Macro the pre-build stamps with the year. |
+| `date.defines.month` | `FW_BUILD_MONTH` | Macro the pre-build stamps with the month. |
+| `date.defines.day` | `FW_BUILD_DAY` | Macro the pre-build stamps with the day. |
+| `behavior.insert_s0` | `true` | Write the version S0 record (`<s0_prefix> X.Y.Z`). |
+| `behavior.s0_prefix` | `FW` | Text before the version in the S0 record. |
+| `behavior.rename_mode` | `rename` | `copy` keeps the original `.srec`; `rename` moves it. |
+| `behavior.quiet` | `false` | Accepted and ignored: the console output is always one line. |
+| `outputs.write_log` | `false` | Append one line per build to the build log. |
+| `outputs.log_path` | `<output dir>/build_info.log` | Build log file. |
+| `outputs.write_version_file` | `false` | Write `X.Y.Z` to a file. |
+| `outputs.version_file_path` | `<output dir>/fw_version.txt` | Version file. |
+| `outputs.write_tool_version_file` | `false` | Write the tool version to a file. |
+| `outputs.tool_version_file_path` | `<script dir>/<tool name>.version` | Tool version file. |
+| `git.tag` | `false` | Create the annotated tag `vX.Y.Z` and push it. |
+| `git.remote` | `origin` | Remote the tag is pushed to. |
+| `github.release` | `false` | Create a GitHub release for `vX.Y.Z` with the S-Record attached. |
+| `github.repository` | `""` | `owner/repo` of the release; required when `github.release` is on. |
+| `github.token_env` | `GITHUB_TOKEN` | Environment variable holding the GitHub token. |
+| `github.release_name` | `Firmware X.Y.Z` | Release title. |
+| `github.release_notes_path` | `""` | File whose content becomes the release body. |
+| `github.draft` | `false` | Create the release as a draft. |
+| `github.prerelease` | `false` | Mark the release as a pre-release. |
+| `github.generate_notes` | `true` | Let GitHub generate the release notes. |
 
----
+`<output dir>` is the directory of the versioned S-Record.
 
-## 🚀 Advanced Options
+## S0 record
 
-### 🔖 Git Tag
-Enable with:
-```json
-"git": { "tag": true, "remote": "origin" }
-```
-> Requires a valid Git repository with push permissions.
+The post-build keeps an S0 record on the first line (the header the linker
+writes) as it is, removes any other S0 record - the one a previous run
+inserted - and inserts one S0 record carrying `<s0_prefix> X.Y.Z` right
+before the termination record (S7, S8 or S9). Running it twice on the same
+file therefore leaves a single version record.
 
-### 🐙 GitHub Release
-Enable with:
-```json
-"github": {
-  "release": true,
-  "repository": "owner/repo",
-  "token_env": "GITHUB_TOKEN"
-}
-```
-Set your access token as an environment variable:
+## GitHub release
+
+With `github.release` on, the post-build creates the annotated `vX.Y.Z` tag if it
+does not exist yet and pushes it (independently of `git.tag`), then creates the release
+and uploads the versioned S-Record as an asset. The token in `token_env` needs
+write access to the repository contents:
+
 ```bash
-export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxx
+export GITHUB_TOKEN=<token>
 ```
 
----
+## Logs and exit codes
 
-## ⚠️ Troubleshooting
+Every post-build run writes a detailed log next to the script, `<tool name>.log`
+(`cubeide_post_build.log` or `fw_release_tool.log`), with timestamped INFO,
+WARNING and ERROR lines. The build log, when enabled, gets one line per build:
 
-| Problem | Likely Cause | Solution |
-|----------|---------------|-----------|
-| `FAIL (see log)` | generic error | check `Tools/fw_release_tool.log` |
-| `Config file not found` | file missing or misplaced | ensure it's in `Tools/` or CWD |
-| `Define not found` | mismatched define names | update `version.defines` in config |
-| `Git error` | invalid repo or no remote | verify `git remote -v` works |
-| `GitHub API error` | missing or invalid token | export `GITHUB_TOKEN` with `contents:write` permissions |
-
----
-
-## 🧾 Example Output
-
-Console output:
-```
-OK v1.2.3 -> MyFirmware_v1.2.3.srec (tool 1.0.0)
+```text
+2025-10-17T12:22:35.481920+00:00 | tool=1.0.2 | version=2.3.5 | S0=yes | action=copied | output=MyApp_v2.3.5.srec | out_dir=... | header=... | branch=main | commit=abc1234 | sha256=...
 ```
 
-`Tools/fw_release_tool.log`:
+On failure the console shows `FAIL (see log)` or `FAIL vX.Y.Z (see log)`, and
+the exit code says which step failed:
+
+| Code | Step |
+|---|---|
+| 0 | Success |
+| 1 | Config or header error (missing file, missing define, invalid JSON); a missing S-Record when `insert_s0` is off |
+| 2 | Git tag creation or push (`git.tag`) |
+| 3 | `github.release` on with an empty `github.repository` |
+| 4 | Token variable `github.token_env` not set |
+| 5 | Tag creation or push needed by the GitHub release |
+| 6 | GitHub release creation or asset upload |
+| 7 | S0 record handling, including a missing or unreadable S-Record |
+
+The pre-build prints `OK build date YYYY-MM-DD -> version.h`, or
+`FAIL cubeide_pre_build: <reason>` with exit code 1.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `No configuration file found ...` or `cubeide_build.config.json not found ...` | Config file missing or misplaced | Put it in the project directory or in `Tools/` (see *Config discovery*). |
+| `Define ... not found` | Macro names in the config differ from `version.h` | Fix `version.defines` or `date.defines`. |
+| `Define ... not found` for a define that is there | Value is not a plain integer (`1u`, an expression) | Use a plain decimal or hex literal. |
+| Exit code 2 or 5 | Not a git repository, or no push rights on the remote | Check `git remote -v` and the credentials. |
+| Exit code 4 or 6 | Token missing, expired or without write access | Export a valid token in the variable named by `github.token_env`. |
+
+## Development
+
+The project uses [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+uv run --frozen ruff check .
+uv run --frozen ruff format .
+uv run --frozen pyright
+uv run --frozen pytest
 ```
-2025-10-17T14:25:02+0200 | INFO | Parsed version from header: major=1, minor=2, build=3
-2025-10-17T14:25:02+0200 | INFO | S0 record inserted with text: 'FW 1.2.3'
-2025-10-17T14:25:02+0200 | INFO | Renamed file to: MyFirmware_v1.2.3.srec
-...
-```
 
----
-
-## 🔄 Changelog
-
-### v1.0.0 (2025-10-17)
-- First stable version of `fw_release_tool`
-- Features:
-  - Configurable version parsing from header file
-  - Optional S0 record insertion into `.srec`
-  - Automatic rename/copy of `.srec` file
-  - Detailed logging with timestamp and levels
-  - CI-friendly single-line logging
-  - Optional Git tag creation and push
-  - Optional GitHub release creation and asset upload
-  - Firmware and tool version file generation
-  - Fully JSON-configurable with paths relative to `Tools/`
-
----
+CI runs the same checks and the tests on every pull request. `docs/overview.md`
+describes how the scripts are put together.

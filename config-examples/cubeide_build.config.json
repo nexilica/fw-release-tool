@@ -1,25 +1,25 @@
 {
   "paths": {
-    "header": "../Core/Src/Dev/version.h",
+    "header": "../Application/version.h",
     "srec": ""
   },
   "version": {
     "defines": {
-      "major": "FW_VERSION_MAJOR",
-      "minor": "FW_VERSION_MINOR",
-      "build": "FW_VERSION_BUILD"
+      "major": "APP_FW_VERSION_MAJOR",
+      "minor": "APP_FW_VERSION_MINOR",
+      "build": "APP_FW_VERSION_PATCH"
     }
   },
   "date": {
     "defines": {
-      "year": "FW_BUILD_YEAR",
-      "month": "FW_BUILD_MONTH",
-      "day": "FW_BUILD_DAY"
+      "year": "APP_FW_BUILD_YEAR",
+      "month": "APP_FW_BUILD_MONTH",
+      "day": "APP_FW_BUILD_DAY"
     }
   },
   "behavior": {
     "insert_s0": true,
-    "s0_prefix": "FW",
+    "s0_prefix": "APP",
     "rename_mode": "copy",
     "quiet": false
   },
@@ -27,7 +27,7 @@
     "write_log": true,
     "log_path": "../Release/build_info.log",
     "write_version_file": false,
-    "version_file_path": "../Release/fw_version.txt",
+    "version_file_path": "",
     "write_tool_version_file": false,
     "tool_version_file_path": ""
   },
@@ -37,7 +37,7 @@
   },
   "github": {
     "release": false,
-    "repository": "nexilica/cannect-fw",
+    "repository": "your-org/your-firmware",
     "token_env": "GITHUB_TOKEN",
     "release_name": "",
     "release_notes_path": "",

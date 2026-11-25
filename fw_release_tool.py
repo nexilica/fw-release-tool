@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-import re
-import sys
-import os
-import json
-import shutil
+from __future__ import annotations
+
+import argparse
 import hashlib
-import subprocess
-from pathlib import Path
-from datetime import datetime, timezone
-from urllib import request, parse, error
+import json
 import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from http.client import HTTPException
+from pathlib import Path
+from typing import Any
+from urllib import error, parse, request
 
 # ============================ Tool version ============================
 TOOL_NAME = "fw_release_tool"
@@ -17,6 +22,7 @@ TOOL_VERSION = "1.0.2"  # <— aggiorna qui quando cambi lo script
 
 
 # ============================ Logging Setup ============================
+
 
 def setup_script_logger() -> logging.Logger:
     """Initialize a file logger in the script directory with timestamped lines and levels."""
@@ -28,8 +34,7 @@ def setup_script_logger() -> logging.Logger:
     logger.handlers.clear()
 
     fmt = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S%z"
+        fmt="%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"
     )
     fh = logging.FileHandler(log_path, encoding="utf-8")
     fh.setLevel(logging.DEBUG)
@@ -41,7 +46,10 @@ def setup_script_logger() -> logging.Logger:
 
 # ====================== Core parsing / SREC utilities ======================
 
-def parse_version_from_header(hdr_path: Path, names: dict, log: logging.Logger):
+
+def parse_version_from_header(
+    hdr_path: Path, names: dict, log: logging.Logger
+) -> tuple[int, int, int]:
     """
     Parse version macros from header using custom define names.
     Accepts decimal or hex literals (e.g., 12, 0x0C).
@@ -52,8 +60,9 @@ def parse_version_from_header(hdr_path: Path, names: dict, log: logging.Logger):
     def pick(define_name: str) -> int:
         # Match: #define NAME <number>   (dec or 0xhex). Ignore trailing comments.
         m = re.search(
-            rf'^\s*#define\s+{re.escape(define_name)}\s+([0-9]+|0[xX][0-9a-fA-F]+)\b',
-            text, re.M
+            rf"^\s*#define\s+{re.escape(define_name)}\s+([0-9]+|0[xX][0-9a-fA-F]+)\b",
+            text,
+            re.MULTILINE,
         )
         if not m:
             raise RuntimeError(f"Define {define_name} not found in {hdr_path}")
@@ -63,7 +72,13 @@ def parse_version_from_header(hdr_path: Path, names: dict, log: logging.Logger):
     maj = pick(names.get("major", "FW_VERSION_MAJOR"))
     minr = pick(names.get("minor", "FW_VERSION_MINOR"))
     bld = pick(names.get("build", "FW_VERSION_BUILD"))
-    log.info("Parsed version from header: major=%d, minor=%d, build=%d (defines=%s)", maj, minr, bld, names)
+    log.info(
+        "Parsed version from header: major=%d, minor=%d, build=%d (defines=%s)",
+        maj,
+        minr,
+        bld,
+        names,
+    )
     return maj, minr, bld
 
 
@@ -71,14 +86,16 @@ def srec_s0(text: str, addr: int = 0x0000) -> str:
     """Build a valid Motorola S-Record S0 line containing the given text."""
     data = text.encode("ascii")
     addr_hi = (addr >> 8) & 0xFF
-    addr_lo = (addr & 0xFF)
+    addr_lo = addr & 0xFF
     count = 2 + len(data) + 1  # address(2) + data + checksum
     total = count + addr_hi + addr_lo + sum(data)
     checksum = (~total) & 0xFF
     return f"S0{count:02X}{addr:04X}{data.hex().upper()}{checksum:02X}\n"
 
 
-def inject_single_s0(srec_path: Path, s0_line: str, log: logging.Logger) -> tuple[bool, int]:
+def inject_single_s0(
+    srec_path: Path, s0_line: str, log: logging.Logger
+) -> tuple[bool, int]:
     """
     Ensure exactly one custom S0 record exists in the SREC file.
     Keeps the original header S0 (if present at the top) and removes any additional S0 records.
@@ -126,24 +143,37 @@ def inject_single_s0(srec_path: Path, s0_line: str, log: logging.Logger) -> tupl
 
     log.info(
         "S0 handling: preserved_header=%s, removed=%d, inserted=1, position=%s",
-        preserve_first_s0, removed, insert_at
+        preserve_first_s0,
+        removed,
+        insert_at,
     )
     return True, removed
 
 
-
-
 # ============================ Logging helpers ============================
 
-def write_ci_log(log_path: Path, *, version: str, s0_inserted: bool,
-                 action: str, output_file: Path, header_path: Path,
-                 branch: str = "", commit: str = "", sha256: str = "",
-                 tool_version: str = "", log: logging.Logger = None):
+
+def write_ci_log(
+    log_path: Path,
+    *,
+    version: str,
+    s0_inserted: bool,
+    action: str,
+    output_file: Path,
+    header_path: Path,
+    branch: str = "",
+    commit: str = "",
+    sha256: str = "",
+    tool_version: str = "",
+    log: logging.Logger | None = None,
+) -> None:
     """Append one structured line to the build log (CI-friendly)."""
     ts = datetime.now(timezone.utc).isoformat()
-    line = (f"{ts} | tool={tool_version} | version={version} | S0={'yes' if s0_inserted else 'no'} | "
-            f"action={action} | output={output_file.name} | out_dir={output_file.parent} | "
-            f"header={header_path} | branch={branch} | commit={commit} | sha256={sha256}\n")
+    line = (
+        f"{ts} | tool={tool_version} | version={version} | S0={'yes' if s0_inserted else 'no'} | "
+        f"action={action} | output={output_file.name} | out_dir={output_file.parent} | "
+        f"header={header_path} | branch={branch} | commit={commit} | sha256={sha256}\n"
+    )
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as f:
         f.write(line)
@@ -151,21 +181,34 @@ def write_ci_log(log_path: Path, *, version: str, s0_inserted: bool,
         log.info("Appended CI log: %s", log_path)
 
 
-def run(cmd, cwd=None, log: logging.Logger = None):
+def run(
+    cmd: list[str], cwd: Path | None = None, log: logging.Logger | None = None
+) -> tuple[int, str, str]:
     """Run a command and return (rc, stdout, stderr)."""
     if log:
         log.info("Executing command: %s", " ".join(cmd))
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, text=True)
+    p = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, text=True
+    )
     out, err = p.communicate()
     if log:
         lvl = logging.INFO if p.returncode == 0 else logging.ERROR
-        log.log(lvl, "Command finished with rc=%d, stdout='%s', stderr='%s'", p.returncode, out.strip(), err.strip())
+        log.log(
+            lvl,
+            "Command finished with rc=%d, stdout='%s', stderr='%s'",
+            p.returncode,
+            out.strip(),
+            err.strip(),
+        )
     return p.returncode, out.strip(), err.strip()
 
 
 # ============================ Git / GitHub ============================
 
-def git_tag_and_push(version_tag: str, message: str, remote: str, log: logging.Logger):
+
+def git_tag_and_push(
+    version_tag: str, message: str, remote: str, log: logging.Logger
+) -> None:
     """Create an annotated tag and push it to the remote."""
     rc, out, err = run(["git", "rev-parse", "--is-inside-work-tree"], log=log)
     if rc != 0 or out != "true":
@@ -175,7 +218,9 @@ def git_tag_and_push(version_tag: str, message: str, remote: str, log: logging.L
     if out.strip() == version_tag:
         log.info("Git tag '%s' already exists; skipping creation.", version_tag)
     else:
-        rc, out, err = run(["git", "tag", "-a", version_tag, "-m", message or version_tag], log=log)
+        rc, out, err = run(
+            ["git", "tag", "-a", version_tag, "-m", message or version_tag], log=log
+        )
         if rc != 0:
             raise RuntimeError(f"Failed to create git tag: {err or out}")
         log.info("Created git tag: %s", version_tag)
@@ -186,7 +231,14 @@ def git_tag_and_push(version_tag: str, message: str, remote: str, log: logging.L
     log.info("Pushed git tag '%s' to remote '%s'.", version_tag, remote)
 
 
-def http_json(method: str, url: str, token: str, payload: dict, log: logging.Logger, extra_headers: dict = None):
+def http_json(
+    method: str,
+    url: str,
+    token: str,
+    payload: dict,
+    log: logging.Logger,
+    extra_headers: dict | None = None,
+) -> tuple[int, Any]:
     """Make an HTTP request with JSON payload and Bearer token."""
     headers = {
         "Authorization": f"Bearer {token}",
@@ -209,7 +261,9 @@ def http_json(method: str, url: str, token: str, payload: dict, log: logging.Log
         raise RuntimeError(f"GitHub API error {e.code} at {url}: {detail}") from None
 
 
-def http_upload_asset(upload_url_template: str, asset_path: Path, token: str, log: logging.Logger):
+def http_upload_asset(
+    upload_url_template: str, asset_path: Path, token: str, log: logging.Logger
+) -> tuple[int, Any]:
     """Upload a release asset to the GitHub uploads endpoint."""
     base = upload_url_template.split("{")[0]
     name = asset_path.name
@@ -231,12 +285,24 @@ def http_upload_asset(upload_url_template: str, asset_path: Path, token: str, lo
     except error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="ignore")
         log.error("GitHub asset upload error %d at %s: %s", e.code, url, detail)
-        raise RuntimeError(f"GitHub asset upload error {e.code} at {url}: {detail}") from None
+        raise RuntimeError(
+            f"GitHub asset upload error {e.code} at {url}: {detail}"
+        ) from None
 
 
-def create_github_release(*, owner_repo: str, token: str, tag: str, name: str,
-                          body: str, draft: bool, prerelease: bool,
-                          generate_notes: bool, asset: Path, log: logging.Logger):
+def create_github_release(
+    *,
+    owner_repo: str,
+    token: str,
+    tag: str,
+    name: str,
+    body: str,
+    draft: bool,
+    prerelease: bool,
+    generate_notes: bool,
+    asset: Path,
+    log: logging.Logger,
+) -> Any:
     """Create a GitHub release and optionally upload an asset."""
     api_base = "https://api.github.com"
     url = f"{api_base}/repos/{owner_repo}/releases"
@@ -263,6 +329,7 @@ def create_github_release(*, owner_repo: str, token: str, tag: str, name: str,
 
 # ============================ Config handling ============================
 
+
 def find_config_path(script_dir: Path) -> Path:
     """
     Auto-discover a JSON config file.
@@ -282,21 +349,23 @@ def find_config_path(script_dir: Path) -> Path:
     for c in candidates:
         if c.exists():
             return c
-    raise FileNotFoundError("No configuration file found in execution path or script folder.")
+    raise FileNotFoundError(
+        "No configuration file found in execution path or script folder."
+    )
 
 
-def load_config_auto(log: logging.Logger, script_dir: Path):
+def load_config_auto(log: logging.Logger, script_dir: Path) -> tuple[dict, Path]:
     """Load configuration from auto-discovered JSON file. Returns (dict, path)."""
     cfg_file = find_config_path(script_dir)
     try:
         cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
-    except Exception as e:
+    except (OSError, ValueError) as e:
         raise SystemExit(f"Invalid JSON in config '{cfg_file}': {e}")
     log.info("Loaded config from: %s", cfg_file)
     return cfg, cfg_file
 
 
-def cfg_get(cfg: dict, key_path: str, default=None):
+def cfg_get(cfg: dict, key_path: str, default: Any = None) -> Any:
     """Deep-get helper using dotted key path."""
     cur = cfg
     for k in key_path.split("."):
@@ -316,19 +385,23 @@ def resolve_from_script(path_str: str, script_dir: Path) -> Path:
 
 # ============================ Main ============================
 
-def main():
+
+def main() -> None:
     logger = setup_script_logger()
     script_dir = Path(__file__).resolve().parent
     logger.info("%s starting (tool_version=%s)", TOOL_NAME, TOOL_VERSION)
     try:
-        import argparse
         parser = argparse.ArgumentParser(
             description="Versioned SREC tool (config-driven): insert S0, rename/copy, logging, optional git tag and GitHub release."
         )
-        parser.add_argument("srec", nargs="?", help="Path to the .srec produced by the build (optional; can be set in config).")
+        parser.add_argument(
+            "srec",
+            nargs="?",
+            help="Path to the .srec produced by the build (optional; can be set in config).",
+        )
         args = parser.parse_args()
 
-        cfg, cfg_file = load_config_auto(log=logger, script_dir=script_dir)
+        cfg, _ = load_config_auto(log=logger, script_dir=script_dir)
 
         # -------- Resolve paths strictly relative to the script directory --------
         header_path_str = cfg_get(cfg, "paths.header", "")
@@ -339,21 +412,24 @@ def main():
         # SREC: CLI positional overrides config
         srec_path_str = args.srec or cfg_get(cfg, "paths.srec", "")
         if not srec_path_str:
-            raise SystemExit("SREC path not provided (CLI) and 'paths.srec' missing in config.")
+            raise SystemExit(
+                "SREC path not provided (CLI) and 'paths.srec' missing in config."
+            )
         srec_path = resolve_from_script(srec_path_str, script_dir)
 
         # Behavior
         insert_s0 = bool(cfg_get(cfg, "behavior.insert_s0", True))
         s0_prefix = cfg_get(cfg, "behavior.s0_prefix", "FW")
         rename_mode = cfg_get(cfg, "behavior.rename_mode", "rename")  # rename|copy
-        quiet = bool(cfg_get(cfg, "behavior.quiet", False))
 
         # Outputs
         write_log_enabled = bool(cfg_get(cfg, "outputs.write_log", False))
         log_path_str = cfg_get(cfg, "outputs.log_path", "")
         write_version_file = bool(cfg_get(cfg, "outputs.write_version_file", False))
         version_file_path_str = cfg_get(cfg, "outputs.version_file_path", "")
-        write_tool_version_file = bool(cfg_get(cfg, "outputs.write_tool_version_file", False))
+        write_tool_version_file = bool(
+            cfg_get(cfg, "outputs.write_tool_version_file", False)
+        )
         tool_version_file_path_str = cfg_get(cfg, "outputs.tool_version_file_path", "")
 
         # Git / GitHub
@@ -379,14 +455,30 @@ def main():
 
         logger.info("Header: %s", header_path)
         logger.info("Input SREC: %s", srec_path)
-        logger.info("Behavior: insert_s0=%s, s0_prefix='%s', rename_mode=%s", insert_s0, s0_prefix, rename_mode)
-        logger.info("Outputs: write_log=%s, version_file=%s, tool_version_file=%s",
-                    write_log_enabled, write_version_file, write_tool_version_file)
+        logger.info(
+            "Behavior: insert_s0=%s, s0_prefix='%s', rename_mode=%s",
+            insert_s0,
+            s0_prefix,
+            rename_mode,
+        )
+        logger.info(
+            "Outputs: write_log=%s, version_file=%s, tool_version_file=%s",
+            write_log_enabled,
+            write_version_file,
+            write_tool_version_file,
+        )
         logger.info("Git: tag=%s, remote=%s", git_tag_enabled, git_remote)
-        logger.info("GitHub: release=%s, repo=%s, token_env=%s", gh_release_enabled, gh_repo, gh_token_env)
+        logger.info(
+            "GitHub: release=%s, repo=%s, token_env=%s",
+            gh_release_enabled,
+            gh_repo,
+            gh_token_env,
+        )
 
         # Parse version
-        major, minor, build = parse_version_from_header(header_path, define_names, log=logger)
+        major, minor, build = parse_version_from_header(
+            header_path, define_names, log=logger
+        )
         version_str = f"{major}.{minor}.{build}"
         version_tag = f"v{version_str}"
 
@@ -396,18 +488,25 @@ def main():
         if insert_s0:
             s0 = srec_s0(f"{s0_prefix} {version_str}")
             try:
-                s0_inserted, removed_s0 = inject_single_s0(srec_path, s0_line=s0, log=logger)
-                logger.info("S0 record refreshed (removed=%d, inserted=%s)", removed_s0, s0_inserted)
-            except Exception as e:
-                logger.error("Failed to handle S0 record: %s", e)
+                s0_inserted, removed_s0 = inject_single_s0(
+                    srec_path, s0_line=s0, log=logger
+                )
+                logger.info(
+                    "S0 record refreshed (removed=%d, inserted=%s)",
+                    removed_s0,
+                    s0_inserted,
+                )
+            except (OSError, RuntimeError, ValueError):
+                logger.exception("Failed to handle S0 record")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(7)
         else:
             logger.info("S0 insertion disabled by config.")
-        
 
         # Rename/copy
-        new_name = srec_path.with_name(f"{srec_path.stem}_v{version_str}{srec_path.suffix}")
+        new_name = srec_path.with_name(
+            f"{srec_path.stem}_v{version_str}{srec_path.suffix}"
+        )
         if rename_mode == "copy":
             shutil.copy2(srec_path, new_name)
             action = "copied"
@@ -423,14 +522,22 @@ def main():
 
         # Version file (relative to script if provided)
         if write_version_file:
-            vf = resolve_from_script(version_file_path_str, script_dir) if version_file_path_str else (new_name.parent / "fw_version.txt")
+            vf = (
+                resolve_from_script(version_file_path_str, script_dir)
+                if version_file_path_str
+                else (new_name.parent / "fw_version.txt")
+            )
             vf.parent.mkdir(parents=True, exist_ok=True)
             vf.write_text(version_str, encoding="utf-8")
             logger.info("Wrote version file: %s", vf)
 
         # Tool version file (optional)
         if write_tool_version_file:
-            tvf = resolve_from_script(tool_version_file_path_str, script_dir) if tool_version_file_path_str else (script_dir / f"{TOOL_NAME}.version")
+            tvf = (
+                resolve_from_script(tool_version_file_path_str, script_dir)
+                if tool_version_file_path_str
+                else (script_dir / f"{TOOL_NAME}.version")
+            )
             tvf.parent.mkdir(parents=True, exist_ok=True)
             tvf.write_text(TOOL_VERSION, encoding="utf-8")
             logger.info("Wrote tool version file: %s", tvf)
@@ -441,11 +548,17 @@ def main():
         branch = branch if rc == 0 else ""
         commit = commit if rc2 == 0 else ""
         if not branch or not commit:
-            logger.warning("Could not resolve branch and/or commit (is this a git repo?)")
+            logger.warning(
+                "Could not resolve branch and/or commit (is this a git repo?)"
+            )
 
         # CI log (one-line)
         if write_log_enabled:
-            ci_log_path = resolve_from_script(log_path_str, script_dir) if log_path_str else (new_name.parent / "build_info.log")
+            ci_log_path = (
+                resolve_from_script(log_path_str, script_dir)
+                if log_path_str
+                else (new_name.parent / "build_info.log")
+            )
             try:
                 write_ci_log(
                     ci_log_path,
@@ -458,46 +571,65 @@ def main():
                     commit=commit,
                     sha256=sha256,
                     tool_version=TOOL_VERSION,
-                    log=logger
+                    log=logger,
                 )
-            except Exception as e:
+            except OSError as e:
                 logger.warning("Failed to write CI log '%s': %s", ci_log_path, e)
 
         # Git tag
         if git_tag_enabled:
             try:
-                git_tag_and_push(version_tag, message=f"Firmware {version_str}", remote=git_remote, log=logger)
-            except Exception as e:
-                logger.error("Git tag/push failed: %s", e)
+                git_tag_and_push(
+                    version_tag,
+                    message=f"Firmware {version_str}",
+                    remote=git_remote,
+                    log=logger,
+                )
+            except (OSError, RuntimeError):
+                logger.exception("Failed to create or push the git tag")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(2)
 
         # GitHub release
         if gh_release_enabled:
             if not gh_repo:
-                logger.error("GitHub release requested but 'github.repository' is empty in config.")
+                logger.error(
+                    "GitHub release requested but 'github.repository' is empty in config."
+                )
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(3)
             token = os.environ.get(gh_token_env, "")
             if not token:
-                logger.error("GitHub release requested but token env '%s' is not set.", gh_token_env)
+                logger.error(
+                    "GitHub release requested but token env '%s' is not set.",
+                    gh_token_env,
+                )
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(4)
 
             # ensure tag exists remotely (create if missing)
             try:
-                git_tag_and_push(version_tag, message=f"Firmware {version_str}", remote=git_remote, log=logger)
-            except Exception as e:
-                logger.error("Needed to create/push tag for release but failed: %s", e)
+                git_tag_and_push(
+                    version_tag,
+                    message=f"Firmware {version_str}",
+                    remote=git_remote,
+                    log=logger,
+                )
+            except (OSError, RuntimeError):
+                logger.exception("Failed to create or push the tag for the release")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(5)
 
             body = ""
             if gh_notes_path:
                 try:
-                    body = resolve_from_script(gh_notes_path, script_dir).read_text(encoding="utf-8")
-                except Exception as e:
-                    logger.warning("Could not read release notes '%s': %s", gh_notes_path, e)
+                    body = resolve_from_script(gh_notes_path, script_dir).read_text(
+                        encoding="utf-8"
+                    )
+                except (OSError, ValueError) as e:
+                    logger.warning(
+                        "Could not read release notes '%s': %s", gh_notes_path, e
+                    )
 
             try:
                 create_github_release(
@@ -510,10 +642,10 @@ def main():
                     prerelease=gh_prerelease,
                     generate_notes=gh_generate_notes,
                     asset=new_name,
-                    log=logger
+                    log=logger,
                 )
-            except Exception as e:
-                logger.error("GitHub release failed: %s", e)
+            except (OSError, RuntimeError, ValueError, KeyError, HTTPException):
+                logger.exception("Failed to create the GitHub release")
                 print(f"FAIL v{version_str} (see log)")
                 sys.exit(6)
 
@@ -524,8 +656,8 @@ def main():
         logging.getLogger(TOOL_NAME).error("SystemExit: %s", se)
         print("FAIL (see log)")
         raise
-    except Exception as e:
-        logging.getLogger(TOOL_NAME).exception("Unhandled exception: %s", e)
+    except Exception:
+        logging.getLogger(TOOL_NAME).exception("Unhandled exception")
         print("FAIL (see log)")
         sys.exit(1)
 
